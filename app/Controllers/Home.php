@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Models\MPE;
 use App\Models\LevelPermissionModel;
 use App\Models\UserActivityModel;
+use TCPDF;
 
 class Home extends BaseController
 {
@@ -158,9 +159,9 @@ class Home extends BaseController
     {
         $username = $this->request->getPost('username');
         $password = $this->request->getPost('password');
-        $email = $this->request->getPost('nis');
-        $alamat = $this->request->getPost('kelas');
-        $nohp = $this->request->getPost('jurusan');
+        // $email = $this->request->getPost('nis');
+        // $alamat = $this->request->getPost('kelas');
+        // $nohp = $this->request->getPost('jurusan');
 
         // Default foto jika tidak ada yang diupload
         $foto = '1725288159_5695430fa933ee820f22.jpg';
@@ -179,10 +180,10 @@ class Home extends BaseController
         $data = array(
             'username' => $username,
             'password' => md5($password),
-            'level' => 'Murid',
-            'nis' => $email,
-            'kelas' => $alamat,
-            'jurusan' => $nohp,
+            'level' => 'Pembimbing',
+            // 'nis' => $email,
+            // 'kelas' => $alamat,
+            // 'jurusan' => $nohp,
             'foto' => $foto
         );
 
@@ -230,6 +231,32 @@ class Home extends BaseController
         }
     }
 
+    public function terima($id)
+    {
+        $model = new MPE();
+        $this->logUserActivity('Menerima PKL Murid');
+
+        $where = array('id' => $id);
+        $array = array(
+            'persetujuan' => 'Setuju',
+        );
+        $model->edit('lokasi', $array, $where);
+        return redirect()->to('Home/data');
+    }
+
+    public function tolak($id)
+    {
+        $model = new MPE();
+        $this->logUserActivity('Menerima PKL Murid');
+
+        $where = array('id' => $id);
+        $array = array(
+            'persetujuan' => 'Tidak Setuju',
+        );
+        $model->edit('lokasi', $array, $where);
+        return redirect()->to('Home/data');
+    }
+
     public function input_alamat()
     {
         if (session()->get('id') > 0) {
@@ -244,7 +271,7 @@ class Home extends BaseController
                 $data['yogi'] = $model->getWhere1('setting', $where)->getRow();  // Pastikan getWhere1() ada di model
                 $id_user = session()->get('id');
 
-                $data['data'] = $model->joinFilterByUser(
+                $data['data'] = $model->joinFilterByMurid(
                     'lokasi',          // tabel1
                     'user',            // tabel2
                     'lokasi.id_user = user.id_user', // on1
@@ -271,9 +298,13 @@ class Home extends BaseController
         $db = \Config\Database::connect();
         $builder = $db->table('lokasi');
         $backupBuilder = $db->table('lokasi_backup');
+        $ptBuilder = $db->table('pt');
 
         if ($this->request->getPost()) {
             $id_user = session()->get('id');
+
+            // Log data yang diterima dari form
+            log_message('debug', 'Data dari form: ' . json_encode($this->request->getPost()));
 
             // Cek apakah user sudah pernah menginput lokasi
             $existingLocation = $builder->getWhere(['id_user' => $id_user])->getRow();
@@ -283,39 +314,68 @@ class Home extends BaseController
                 'latitude' => $this->request->getPost('latitude'),
                 'longitude' => $this->request->getPost('longitude'),
                 'address' => $this->request->getPost('address'),
+                'persetujuan' => 'Tidak Setuju',
                 'id_user' => $id_user,
             ];
 
-            if ($existingLocation) {
-                // Simpan data lama ke tabel lokasi_backup sebelum diupdate
-                $backupData = [
-                    'latitude' => $existingLocation->latitude,
-                    'longitude' => $existingLocation->longitude,
-                    'address' => $existingLocation->address,
-                    'id_user' => $existingLocation->id_user,
-                    'create_by' => $existingLocation->id_user, // atau bisa disesuaikan
-                    'create_at' => date('Y-m-d H:i:s'), // waktu saat backup dilakukan
-                    'update_by' => session()->get('id'), // ID pengguna yang melakukan update
-                    'update_at' => date('Y-m-d H:i:s'), // waktu saat backup dilakukan
-                ];
+            // Validasi data
+            if (empty($data['latitude']) || empty($data['longitude']) || empty($data['address'])) {
+                log_message('error', 'Data tidak lengkap: ' . json_encode($data));
+                return redirect()->to('/home/input_alamat')->with('error', 'Data lokasi tidak lengkap. Silakan isi semua field.');
+            }
 
-                // Insert data lama ke lokasi_backup
-                $backupBuilder->insert($backupData);
+            try {
+                if ($existingLocation) {
+                    // Kode untuk update lokasi (tidak diubah)
+                } else {
+                    // Jika belum ada lokasi, simpan lokasi baru
+                    $db->transStart(); // Start transaction
 
-                // Jika lokasi sudah ada, update lokasi
-                $builder->where('id_user', $id_user);
-                if ($builder->update($data)) {
-                    return redirect()->to('/home/input_alamat')->with('message', 'Lokasi berhasil diperbarui.');
-                } else {
-                    return redirect()->to('/home/input_alamat')->with('error', 'Gagal memperbarui lokasi.');
+                    $result = $builder->insert($data);
+
+                    if ($result) {
+                        $lokasiId = $db->insertID();
+                        $id_user = session()->get('id');
+
+                        // Insert ke table pt
+                        $ptData = [
+                            'id' => $lokasiId, // Menggunakan ID yang sama dengan table lokasi
+                            'id_user' => $id_user,
+                        ];
+
+                        $ptResult = $ptBuilder->insert($ptData);
+
+                        if ($ptResult) {
+                            $db->transCommit(); // Commit transaction
+                            log_message('info', 'Lokasi dan PT berhasil disimpan. Data Lokasi: ' . json_encode($data) . ', Data PT: ' . json_encode($ptData));
+                            return redirect()->to('/home/input_alamat')->with('message', 'Lokasi dan PT berhasil disimpan.');
+                        } else {
+                            $db->transRollback(); // Rollback transaction
+                            log_message('error', 'Gagal menyimpan PT. Data PT: ' . json_encode($ptData));
+                            log_message('error', 'Database Error PT: ' . print_r($db->error(), true));
+                            return redirect()->to('/home/input_alamat')->with('error', 'Gagal menyimpan PT. Silakan coba lagi.');
+                        }
+                    } else {
+                        $db->transRollback(); // Rollback transaction
+                        // Log error detail dari database
+                        log_message('error', 'Gagal menyimpan lokasi. Data: ' . json_encode($data));
+                        log_message('error', 'Database Error: ' . print_r($db->error(), true));
+
+                        // Cek apakah ada error spesifik dari database
+                        $db_error = $db->error();
+                        if (!empty($db_error['message'])) {
+                            log_message('error', 'Pesan error database: ' . $db_error['message']);
+                            return redirect()->to('/home/input_alamat')->with('error', 'Gagal menyimpan lokasi: ' . $db_error['message']);
+                        } else {
+                            return redirect()->to('/home/input_alamat')->with('error', 'Gagal menyimpan lokasi. Silakan coba lagi.');
+                        }
+                    }
                 }
-            } else {
-                // Jika belum ada lokasi, simpan lokasi baru
-                if ($builder->insert($data)) {
-                    return redirect()->to('/home/input_alamat')->with('message', 'Lokasi berhasil disimpan.');
-                } else {
-                    return redirect()->to('/home/input_alamat')->with('error', 'Gagal menyimpan lokasi.');
-                }
+            } catch (\Exception $e) {
+                $db->transRollback(); // Rollback transaction
+                log_message('error', 'Exception saat menyimpan lokasi dan PT: ' . $e->getMessage());
+                log_message('error', 'Stack trace: ' . $e->getTraceAsString());
+                return redirect()->to('/home/input_alamat')->with('error', 'Terjadi kesalahan saat menyimpan lokasi dan PT: ' . $e->getMessage());
             }
         }
 
@@ -335,6 +395,11 @@ class Home extends BaseController
             'delete_at' => date('Y-m-d H:i:s'),
         );
         $model->edit('lokasi', $array, $where);
+
+        $array2 = array(
+            'delete_at' => date('Y-m-d H:i:s'),
+        );
+        $model->edit('pt', $array2, $where);
         return redirect()->to('Home/input_alamat');
     }
 
@@ -750,6 +815,10 @@ class Home extends BaseController
             'delete_at' => null,
         );
         $model->edit('lokasi', $array, $where);
+        $array2 = array(
+            'delete_at' => null,
+        );
+        $model->edit('pt', $array2, $where);
         return redirect()->to('Home/restore_data');
     }
 
@@ -973,5 +1042,653 @@ class Home extends BaseController
         // Set pesan sukses
         session()->setFlashdata('success', 'Password berhasil diperbarui.');
         return redirect()->to('home/changepassword');
+    }
+
+
+    // Controller AGENDA PKL
+    public function agenda($id = null)
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            // Cek apakah user memiliki hak akses untuk 'pemesanan'
+            if (has_permission('agenda')) {
+                $this->logUserActivity('Masuk ke Agenda');
+
+                $model = new MPE();
+                $where = array('id_setting' => '1');
+                $data['yogi'] = $model->getWhere1('setting', $where)->getRow();
+                $id_user = session()->get('id');
+                $data['pt'] = $model->join3tbl('pt', 'lokasi', 'user', 'pt.id = lokasi.id', 'pt.id_user = user.id_user', $id_user);
+
+                // Tentukan hari default
+                $selectedDay = $this->request->getGet('hari') ?: 1;
+                $data['selectedDay'] = $selectedDay;
+
+                // Pastikan $id adalah hari yang valid
+                $day = $id ? intval($id) : $selectedDay;
+                $where = array('hari' => $day);
+
+                // Mengambil data agenda berdasarkan hari yang dipilih
+                $agenda = $model->getWhereUser('agenda', $where, $id_user);
+                $agenda2 = $model->getWhereUser2('agenda', $id_user);
+                $agenda3 = $model->getWhereUser3('agenda', $id_user);
+                // Membuat objek kosong untuk agenda
+                $emptyAgenda = (object) [
+                    'tanggal' => '',
+                    'jam_masuk' => '',
+                    'jam_pulang' => '',
+                    'rencana' => '',
+                    'realisasi' => '',
+                    'penugasan' => '',
+                    'masalah' => '',
+                    'keramahan' => '',
+                    'penampilan' => '',
+                    'senyum' => '',
+                    'komunikasi' => '',
+                    'realisasi_kerja' => '',
+                    'catatan_kerja' => '',
+                    'persetujuan_pkl' => '',
+                    'persetujuan_pembimbing' => '',
+                    'absen' => '',
+                    'absen_jumat' => ''
+                ];
+
+                // Jika tidak ada data, gunakan objek kosong
+                $data['agenda'] = $agenda ?? $emptyAgenda;
+                $data['agenda2'] = $agenda2 ?? $emptyAgenda;
+                $data['agenda3'] = $agenda3 ?? $emptyAgenda;
+
+                echo view('header', $data);
+                echo view('menu', $data);
+                echo view('agenda', $data);
+                echo view('footer');
+            } else {
+                // Jika user tidak memiliki hak akses ke 'pemesanan'
+                return redirect()->to('home/error'); // Halaman error atau halaman lain yang sesuai
+            }
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+
+    public function hapus_agenda($id = null)
+    {
+        $model = new MPE();
+        $this->logUserActivity('Menghapus Agenda');
+        // Tentukan hari default
+        $selectedDay = $this->request->getGet('hari') ?: 1;
+        $data['selectedDay'] = $selectedDay;
+
+        // Pastikan $id adalah hari yang valid
+        $day = $id ? intval($id) : $selectedDay;
+        $where = array('hari' => $day);
+
+        $id_user = session()->get('id');
+
+        $model->hapus2('agenda', $where, $id_user);
+        return redirect()->to('Home/agenda');
+    }
+
+
+
+    public function aksi_e_datapt()
+    {
+        $this->logUserActivity('Mengedit Data PT');
+        $a = $this->request->getPost('namaPT');
+        $b = $this->request->getPost('nomorPT');
+        $id = session()->get('id');
+        $where = array('id_user' => $id);
+
+        $array = array(
+
+            'nama_pt' => $a,
+            'nomor_pt' => $b,
+        );
+
+        $model = new MPE();
+        var_dump($array);
+        $model->edit('pt', $array, $where);
+        return redirect()->to('home/agenda');
+    }
+
+    public function aksi_t_agenda()
+    {
+        $this->logUserActivity('Menambah Agenda Harian PT');
+        $a = $this->request->getPost('tanggal');
+        $b = $this->request->getPost('jam_masuk');
+        $c = $this->request->getPost('jam_pulang');
+        $d = $this->request->getPost('rencana');
+        $e = $this->request->getPost('realisasi');
+        $f = $this->request->getPost('penugasan');
+        $g = $this->request->getPost('masalah');
+        $h = $this->request->getPost('keramahan');
+        $i = $this->request->getPost('penampilan');
+        $j = $this->request->getPost('senyum');
+        $k = $this->request->getPost('komunikasi');
+        $l = $this->request->getPost('realisasi_kerja');
+        $m = $this->request->getPost('catatan_kerja');
+        $n = $this->request->getPost('hari');
+        $o = $this->request->getPost('absen');
+        $id = session()->get('id');
+        $where = array('id_user' => $id);
+
+        $model = new MPE();
+
+        // Periksa apakah ada data untuk hari dan user yang sama
+        $existingData = $model->getWhereUser('agenda', ['hari' => $n, 'id_user' => $id], $id);
+
+        $array = array(
+
+            'tanggal' => $a,
+            'jam_masuk' => $b,
+            'jam_pulang' => $c,
+            'rencana' => $d,
+            'realisasi' => $e,
+            'penugasan' => $f,
+            'masalah' => $g,
+            'keramahan' => $h,
+            'penampilan' => $i,
+            'senyum' => $j,
+            'komunikasi' => $k,
+            'realisasi_kerja' => $l,
+            'catatan_kerja' => $m,
+            'hari' => $n,
+            'id_user' => $id,
+            'persetujuan_pkl' => 'Belum Disetujui',
+            'persetujuan_pembimbing' => 'Belum Disetujui',
+            'absen' => $o,
+        );
+
+
+        // Jika data ada, lakukan update, jika tidak, lakukan insert
+        if (!empty($existingData)) {
+            // Update data yang sudah ada
+            $model->updateWhere('agenda', $array, ['hari' => $n, 'id_user' => $id]);
+            $this->logUserActivity('Mengedit Agenda Harian PT');
+        } else {
+            // Tambah data baru
+            $model->tambah('agenda', $array);
+            $this->logUserActivity('Menambah Agenda Harian PT');
+        }
+
+
+        return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+    }
+
+
+
+    public function pemilihan()
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            // Cek apakah user memiliki hak akses untuk 'pemesanan'
+            if (has_permission('pemilihan')) {
+                $this->logUserActivity('Masuk ke Pemilihan Pembimbing');
+
+                $model = new MPE();
+                $where = array('id_setting' => '1');
+                $data['yogi'] = $model->getWhere1('setting', $where)->getRow();
+                $id_user = session()->get('id');
+                $data['data'] = $model->db->table('pt')
+                    ->join('lokasi', 'pt.id = lokasi.id')
+                    ->join('user AS murid', 'pt.id_user = murid.id_user')
+                    ->join('user AS pembimbing', 'murid.pembimbing = pembimbing.id_user', 'left')  // Join untuk pembimbing
+                    ->select('murid.username as murid_name, murid.kelas, murid.jurusan, lokasi.address, murid.nis, pt.nama_pt, pembimbing.username as pembimbing_name, murid.id_user AS murid_id_user, pembimbing.id_user')
+                    ->get()
+                    ->getResult();
+
+                $data['guru'] = $model->tampilWhere2('user', 'Guru');
+
+
+                echo view('header', $data);
+                echo view('menu', $data);
+                echo view('pemilihan', $data);
+                echo view('footer');
+            } else {
+                // Jika user tidak memiliki hak akses ke 'pemesanan'
+                return redirect()->to('home/error'); // Halaman error atau halaman lain yang sesuai
+            }
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+
+    public function updatePembimbing()
+    {
+        $guru_id = $this->request->getPost('guru_id');
+        $murid_ids = $this->request->getPost('approval');
+
+        $model = new MPE();
+
+        if ($murid_ids && $guru_id) {
+            foreach ($murid_ids as $murid_id) {
+                // Update kolom 'pembimbing' di tabel users
+                $array = ['pembimbing' => $guru_id];
+                $where = ['id_user' => $murid_id];
+                $model->edit('user', $array, $where);
+            }
+        }
+
+        return redirect()->to('home/pemilihan')->with('message', 'Pembimbing berhasil diatur');
+    }
+
+    public function surat($lokasiId)
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            require_once ROOTPATH . 'vendor\tecnickcom\tcpdf\tcpdf.php';
+            $model = new MPE();
+            $this->logUserActivity('Melihat Surat PDF');
+            // $id_user = session()->get('id');
+            $where = array('id' => $lokasiId);
+            $data['data'] =  $model->getPtUserLokasi($lokasiId)->getResult();
+            $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
+
+            // Set document information
+            $pdf->SetCreator(PDF_CREATOR);
+            $pdf->SetAuthor('Your Name');
+            $pdf->SetTitle('Your Title');
+            $pdf->SetSubject('Your Subject');
+            $pdf->SetKeywords('Your Keywords');
+            $pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
+            // Add a page
+            $pdf->AddPage();
+
+
+            // Set some content to print
+            $html = view('surat', $data); // Ganti 'your_pdf_view' dengan nama view Anda
+
+            $pdf->writeHTML($html, true, false, true, false, '');
+            $pdf->Output('Surat_PKL.pdf', 'I');
+            exit();
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function murid()
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            // Cek apakah user memiliki hak akses untuk 'pemesanan'
+            if (has_permission('murid')) {
+                $this->logUserActivity('Masuk ke Pemilihan Murid');
+
+                $model = new MPE();
+                $where = array('id_setting' => '1');
+                $data['yogi'] = $model->getWhere1('setting', $where)->getRow();
+                $id_user = session()->get('id');
+                $data['data'] = $model->db->table('pt')
+                    ->join('lokasi', 'pt.id = lokasi.id')
+                    ->join('user AS murid', 'pt.id_user = murid.id_user')
+                    ->join('user AS pembimbing', 'murid.pembimbing = pembimbing.id_user', 'inner')  // Join untuk pembimbing
+                    ->select('murid.username as murid_name, murid.kelas, murid.jurusan, lokasi.address, murid.nis, pt.nama_pt, pembimbing.username as pembimbing_name, murid.id_user AS murid_id_user, pembimbing.id_user')
+                    ->where('murid.pembimbing_pkl', $id_user)
+                    ->get()
+                    ->getResult();
+
+                // $data['guru'] = $model->tampilWhere2('user', 'Murid');
+                $data['murid'] = $model->db->table('pt')
+                    ->join('lokasi', 'pt.id = lokasi.id')
+                    ->join('user AS murid', 'pt.id_user = murid.id_user')
+                    ->join('user AS pembimbing', 'murid.pembimbing = pembimbing.id_user', 'left')  // Join untuk pembimbing
+                    ->select('murid.username as murid_name, murid.kelas, murid.jurusan, lokasi.address, murid.nis, pt.nama_pt, pembimbing.username as pembimbing_name, murid.id_user AS murid_id_user, pembimbing.id_user, murid.level')
+                    ->where('murid.level', 'Murid')
+                    ->get()
+                    ->getResult();
+
+                echo view('header', $data);
+                echo view('menu', $data);
+                echo view('murid', $data);
+                echo view('footer');
+            } else {
+                // Jika user tidak memiliki hak akses ke 'pemesanan'
+                return redirect()->to('home/error'); // Halaman error atau halaman lain yang sesuai
+            }
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function updatePembimbing_pkl()
+    {
+        // Mengambil data 'approval' yang merupakan array berisi ID murid yang dipilih
+        $murid_ids = $this->request->getPost('approval');
+        $id_user = session()->get('id');
+        $model = new MPE();
+
+        // Pastikan bahwa $murid_ids adalah array sebelum membangun query
+        if (is_array($murid_ids) && count($murid_ids) > 0) {
+            // Gunakan klausa 'IN' untuk memperbarui beberapa murid
+            $model->db->table('user')
+                ->whereIn('id_user', $murid_ids)  // Menggunakan klausa 'IN'
+                ->update(['pembimbing_pkl' => $id_user]);  // Mengupdate kolom 'pembimbing_pkl' dengan id_user pembimbing saat ini
+        }
+
+        // Redirect ke halaman murid setelah proses update
+        return redirect()->to('home/murid');
+    }
+
+    public function hapusPembimbing_pkl($id)
+    {
+        $model = new MPE();
+
+        $where = array('id_user' => $id);
+        $array = array(
+            'pembimbing_pkl' => null,
+        );
+        $model->edit('user', $array, $where);
+
+        return redirect()->to('home/murid');
+    }
+
+    public function agenda_murid($id)
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            // Cek apakah user memiliki hak akses untuk 'pemesanan'
+            if (has_permission('agenda_murid')) {
+                $this->logUserActivity('Masuk ke Agenda Murid');
+
+                $model = new MPE();
+                $where = array('id_setting' => '1');
+                $data['yogi'] = $model->getWhere1('setting', $where)->getRow();
+
+                // Ambil id_user dari parameter $id, yang dikirim melalui URL
+                $id_user = $id;  // $id berasal dari URL
+
+                // Query untuk mendapatkan data dengan id_user dari URL
+                $data['pt'] = $model->join3tbl('pt', 'lokasi', 'user', 'pt.id = lokasi.id', 'pt.id_user = user.id_user', $id_user);
+
+                // Tentukan hari default
+                $selectedDay = $this->request->getGet('hari') ?: 1;
+                $data['selectedDay'] = $selectedDay;
+
+                // Pastikan $id adalah hari yang valid
+                $day = $this->request->getGet('hari') ?: 1;
+                $where = array('hari' => $day);
+
+                // Mengambil data agenda berdasarkan hari yang dipilih dan id_user
+                $agenda = $model->getWhereUser('agenda', $where, $id_user);
+                $agenda2 = $model->getWhereUser2('agenda', $id_user);
+                $agenda3 = $model->getWhereUser3('agenda', $id_user);
+                // Membuat objek kosong untuk agenda
+                $emptyAgenda = (object) [
+                    'tanggal' => '',
+                    'jam_masuk' => '',
+                    'jam_pulang' => '',
+                    'rencana' => '',
+                    'realisasi' => '',
+                    'penugasan' => '',
+                    'masalah' => '',
+                    'keramahan' => '',
+                    'penampilan' => '',
+                    'senyum' => '',
+                    'komunikasi' => '',
+                    'realisasi_kerja' => '',
+                    'catatan_kerja' => '',
+                    'persetujuan_pkl' => '',
+                    'persetujuan_pembimbing' => '',
+                    'absen' => '',
+                    'absen_jumat' => ''
+                ];
+
+                // Jika tidak ada data, gunakan objek kosong
+                $data['agenda'] = $agenda ?? $emptyAgenda;
+                $data['agenda2'] = $agenda2 ?? $emptyAgenda;
+                $data['agenda3'] = $agenda3 ?? $emptyAgenda;
+
+                echo view('header', $data);
+                echo view('menu', $data);
+                echo view('agenda_murid', $data);
+                echo view('footer');
+            } else {
+                // Jika user tidak memiliki hak akses ke 'pemesanan'
+                return redirect()->to('home/error'); // Halaman error atau halaman lain yang sesuai
+            }
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function aksi_t_agenda_murid($id)
+    {
+        $this->logUserActivity('Menambah Agenda Harian PT');
+        $h = $this->request->getPost('keramahan');
+        $i = $this->request->getPost('penampilan');
+        $j = $this->request->getPost('senyum');
+        $k = $this->request->getPost('komunikasi');
+        $l = $this->request->getPost('realisasi_kerja');
+        $n = $this->request->getPost('hari');
+        $id = $id;
+        $where = array('id_user' => $id);
+
+        $model = new MPE();
+
+        // Periksa apakah ada data untuk hari dan user yang sama
+        $existingData = $model->getWhereUser('agenda', ['hari' => $n, 'id_user' => $id], $id);
+
+        $array = array(
+
+            'keramahan' => $h,
+            'penampilan' => $i,
+            'senyum' => $j,
+            'komunikasi' => $k,
+            'realisasi_kerja' => $l,
+            'hari' => $n,
+            'id_user' => $id,
+        );
+
+
+        // Jika data ada, lakukan update, jika tidak, lakukan insert
+        if (!empty($existingData)) {
+            // Update data yang sudah ada
+            $model->updateWhere('agenda', $array, ['hari' => $n, 'id_user' => $id]);
+            $this->logUserActivity('Mengedit Agenda Harian PT');
+        } else {
+            // Tambah data baru
+            $model->tambah('agenda', $array);
+            $this->logUserActivity('Menambah Agenda Harian PT');
+        }
+
+
+        return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+    }
+
+    public function setuju_pkl($id)
+    {
+        if (session()->get('id') > 0) {
+            $model = new MPE();
+            $this->logUserActivity('Menyetujui Agenda');
+
+            $where = array('id_agenda' => $id);
+
+            $isi = array(
+                'persetujuan_pkl' => 'Disetujui',
+
+            );
+
+            $model->edit('agenda', $isi, $where);
+            return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function tidak_setuju_pkl($id)
+    {
+        if (session()->get('id') > 0) {
+            $model = new MPE();
+            $this->logUserActivity('Tidak Menyetujui Agenda');
+
+            $where = array('id_agenda' => $id);
+
+            $isi = array(
+                'persetujuan_pkl' => 'Belum Disetujui',
+
+            );
+
+            $model->edit('agenda', $isi, $where);
+            return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+
+    public function setuju_sekolah($id)
+    {
+        if (session()->get('id') > 0) {
+            $model = new MPE();
+            $this->logUserActivity('Menyetujui Agenda');
+
+            $where = array('id_agenda' => $id);
+
+            $isi = array(
+                'persetujuan_pembimbing' => 'Disetujui',
+
+            );
+
+            $model->edit('agenda', $isi, $where);
+            return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function tidak_setuju_sekolah($id)
+    {
+        if (session()->get('id') > 0) {
+            $model = new MPE();
+            $this->logUserActivity('Tidak Menyetujui Agenda');
+
+            $where = array('id_agenda' => $id);
+
+            $isi = array(
+                'persetujuan_pembimbing' => 'Belum Disetujui',
+
+            );
+
+            $model->edit('agenda', $isi, $where);
+            return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function tidak_hadir_jumat($id)
+    {
+        if (session()->get('id') > 0) {
+            $model = new MPE();
+            $this->logUserActivity('Tidak Menyetujui Agenda');
+
+            $where = array('id_agenda' => $id);
+
+            $isi = array(
+                'absen_jumat' => 'Tidak Hadir',
+
+            );
+
+            $model->edit('agenda', $isi, $where);
+            return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function hadir_jumat($id)
+    {
+        if (session()->get('id') > 0) {
+            $model = new MPE();
+            $this->logUserActivity('Menyetujui Agenda');
+
+            $where = array('id_agenda' => $id);
+
+            $isi = array(
+                'absen_jumat' => 'Hadir',
+
+            );
+
+            $model->edit('agenda', $isi, $where);
+            return redirect()->back()->with('success', 'Agenda berhasil disetujui.');
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function murid_bimbingan()
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            // Cek apakah user memiliki hak akses untuk 'pemesanan'
+            if (has_permission('murid_bimbingan')) {
+                $this->logUserActivity('Masuk ke Daftar Murid Bimbingan');
+
+                $model = new MPE();
+                $where = array('id_setting' => '1');
+                $data['yogi'] = $model->getWhere1('setting', $where)->getRow();
+                $id_user = session()->get('id');
+                $data['data'] = $model->db->table('pt')
+                    ->join('lokasi', 'pt.id = lokasi.id')
+                    ->join('user AS murid', 'pt.id_user = murid.id_user')
+                    ->join('user AS pembimbing', 'murid.pembimbing = pembimbing.id_user', 'inner')  // Join untuk pembimbing
+                    ->select('murid.pembimbing, murid.username as murid_name, murid.kelas, murid.jurusan, lokasi.address, murid.nis, pt.nama_pt, pembimbing.username as pembimbing_name, murid.id_user AS murid_id_user, pembimbing.id_user')
+                    ->where('murid.pembimbing', $id_user)
+                    ->get()
+                    ->getResult();
+
+                echo view('header', $data);
+                echo view('menu', $data);
+                echo view('murid_bimbingan', $data);
+                echo view('footer');
+            } else {
+                // Jika user tidak memiliki hak akses ke 'pemesanan'
+                return redirect()->to('home/error'); // Halaman error atau halaman lain yang sesuai
+            }
+        } else {
+            return redirect()->to('home/login');
+        }
+    }
+
+    public function murid_pkl()
+    {
+        if (session()->get('id') > 0) {
+            helper('permission'); // Pastikan helper dimuat
+
+            // Cek apakah user memiliki hak akses untuk 'pemesanan'
+            if (has_permission('murid_pkl')) {
+                $this->logUserActivity('Masuk ke Daftar Murid PKL');
+
+                $model = new MPE();
+                $where = array('id_setting' => '1');
+                $data['yogi'] = $model->getWhere1('setting', $where)->getRow();
+                $id_user = session()->get('id');
+                $data['data'] = $model->db->table('pt')
+                    ->join('lokasi', 'pt.id = lokasi.id')
+                    ->join('user AS murid', 'pt.id_user = murid.id_user')
+                    ->join('user AS pembimbing', 'murid.pembimbing = pembimbing.id_user', 'inner')  // Join untuk pembimbing
+                    ->select('murid.pembimbing, murid.username as murid_name, murid.kelas, murid.jurusan, lokasi.address, murid.nis, pt.nama_pt, pembimbing.username as pembimbing_name, murid.id_user AS murid_id_user, pembimbing.id_user')
+                    ->get()
+                    ->getResult();
+
+                echo view('header', $data);
+                echo view('menu', $data);
+                echo view('murid_bimbingan', $data);
+                echo view('footer');
+            } else {
+                // Jika user tidak memiliki hak akses ke 'pemesanan'
+                return redirect()->to('home/error'); // Halaman error atau halaman lain yang sesuai
+            }
+        } else {
+            return redirect()->to('home/login');
+        }
     }
 }

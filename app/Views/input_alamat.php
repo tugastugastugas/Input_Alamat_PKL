@@ -55,6 +55,7 @@
                                 <th>No</th>
                                 <th>Nama</th>
                                 <th>Lokasi</th>
+                                <th>Persetujuan</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -62,17 +63,25 @@
                             <?php
                             $no = 1;
                             foreach ($data as $key) {
+                                $persetujuan = $key->persetujuan
                             ?>
                                 <tr>
                                     <td><?= $no++ ?></td>
                                     <td><?= $key->username ?></td>
                                     <td><?= $key->address ?></td>
+                                    <td><?= $key->persetujuan ?></td>
                                     <td>
                                         <a>
                                             <button class="btn btn-primary btn-sm" onclick="showRoute([<?= $key->latitude ?>, <?= $key->longitude ?>])">Lihat Rute</button>
                                             <a href="<?= base_url('home/hapus_lokasi/' . $key->id) ?>">
                                                 <button class="btn btn-danger btn-sm">Hapus</button>
                                             </a>
+                                            <?php if ($persetujuan == 'Setuju') { ?>
+                                                <a href="<?= base_url('home/surat/' . $key->id) ?>">
+                                                    <button class="btn btn-success btn-sm">Lihat Surat</button>
+                                                </a>
+                                            <?php } else {
+                                            } ?>
                                     </td>
                                 </tr>
                             <?php } ?>

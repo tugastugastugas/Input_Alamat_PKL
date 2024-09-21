@@ -25,6 +25,36 @@
                     </label>
                     <br>
                     <label>
+                        <input type="checkbox" name="permissions[]" value="agenda"
+                            <?= in_array('agenda', array_column($permissions, 'menu_name')) ? 'checked' : '' ?>>
+                        Agenda
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="permissions[]" value="pemilihan"
+                            <?= in_array('pemilihan', array_column($permissions, 'menu_name')) ? 'checked' : '' ?>>
+                        Pemilihan
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="permissions[]" value="murid"
+                            <?= in_array('murid', array_column($permissions, 'menu_name')) ? 'checked' : '' ?>>
+                        Pemilihan Murid
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="permissions[]" value="murid_bimbingan"
+                            <?= in_array('murid_bimbingan', array_column($permissions, 'menu_name')) ? 'checked' : '' ?>>
+                        Daftar Murid Bimbingan
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="permissions[]" value="murid_pkl"
+                            <?= in_array('murid_pkl', array_column($permissions, 'menu_name')) ? 'checked' : '' ?>>
+                        Daftar Murid PKL
+                    </label>
+                    <br>
+                    <label>
                         <input type="checkbox" name="permissions[]" value="user"
                             <?= in_array('user', array_column($permissions, 'menu_name')) ? 'checked' : '' ?>>
                         User
@@ -60,6 +90,9 @@
                         Restore Edit
                     </label>
                     <br>
+
+
+
                     <button type="submit" class="btn btn-primary">Simpan Hak Akses</button>
                 </form>
 

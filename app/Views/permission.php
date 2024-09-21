@@ -37,6 +37,19 @@
                     </button>
                 </a>
 
+                <a href="<?= base_url('home/hak_akses/Pembimbing') ?>">
+                    <button class="btn btn-danger">
+                        <i class="now-ui-icons ui-1_check"></i> Pemimbing
+                    </button>
+                </a>
+
+                <a href="<?= base_url('home/hak_akses/Kesiswaan') ?>">
+                    <button class="btn btn-danger">
+                        <i class="now-ui-icons ui-1_check"></i> Kesiswaan
+                    </button>
+                </a>
+
+
             </div>
         </div>
     </div>

@@ -158,7 +158,7 @@
                                 <div class="mb-3">
                                     <input type="password" class="form-control" placeholder="Password" aria-label="Password" name="password">
                                 </div>
-                                <div class="mb-3">
+                                <!-- <div class="mb-3">
                                     <input type="text" class="form-control" placeholder="Nis" aria-label="nis" name="nis">
                                 </div>
                                 <div class="mb-3">
@@ -166,7 +166,7 @@
                                 </div>
                                 <div class="mb-3">
                                     <input type="text" class="form-control" placeholder="Jurusan" aria-label="jurusan" name="jurusan">
-                                </div>
+                                </div> -->
                                 <div class="form-group">
                                     <input type="file" class="form-control form-control-lg" id="exampleInputFoto1" name="foto">
                                 </div>

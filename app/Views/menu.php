@@ -30,6 +30,19 @@
             </a>
           </li>
         <?php endif; ?>
+
+        <?php if (has_permission('agenda')): ?>
+          <li class="nav-item">
+            <a class="nav-link " href="<?= base_url('home/agenda') ?>">
+              <div class="icon icon-shape icon-sm border-radius-md text-center me-2 d-flex align-items-center justify-content-center">
+                <i class="ni ni-calendar-grid-58 text-warning text-sm opacity-10"></i>
+              </div>
+              <span class="nav-link-text ms-1">Agenda PKL</span>
+            </a>
+          </li>
+        <?php endif; ?>
+
+
         <?php if (has_permission('input_alamat')): ?>
           <li class="nav-item">
             <a class="nav-link " href="<?= base_url('home/input_alamat') ?>">
@@ -40,6 +53,53 @@
             </a>
           </li>
         <?php endif; ?>
+
+        <?php if (has_permission('pemilihan')): ?>
+          <li class="nav-item">
+            <a class="nav-link " href="<?= base_url('home/pemilihan') ?>">
+              <div class="icon icon-shape icon-sm border-radius-md text-center me-2 d-flex align-items-center justify-content-center">
+                <i class="ni ni-world-2 text-danger text-sm opacity-10"></i>
+              </div>
+              <span class="nav-link-text ms-1">Pemilihan Pembimbing</span>
+            </a>
+          </li>
+        <?php endif; ?>
+
+
+        <?php if (has_permission('murid')): ?>
+          <li class="nav-item">
+            <a class="nav-link " href="<?= base_url('home/murid') ?>">
+              <div class="icon icon-shape icon-sm border-radius-md text-center me-2 d-flex align-items-center justify-content-center">
+                <i class="ni ni-world-2 text-danger text-sm opacity-10"></i>
+              </div>
+              <span class="nav-link-text ms-1">Pemilihan Murid</span>
+            </a>
+          </li>
+        <?php endif; ?>
+
+
+        <?php if (has_permission('murid_bimbingan')): ?>
+          <li class="nav-item">
+            <a class="nav-link " href="<?= base_url('home/murid_bimbingan') ?>">
+              <div class="icon icon-shape icon-sm border-radius-md text-center me-2 d-flex align-items-center justify-content-center">
+                <i class="ni ni-world-2 text-danger text-sm opacity-10"></i>
+              </div>
+              <span class="nav-link-text ms-1">Daftar Murid Bimbingan</span>
+            </a>
+          </li>
+        <?php endif; ?>
+
+        <?php if (has_permission('murid_pkl')): ?>
+          <li class="nav-item">
+            <a class="nav-link " href="<?= base_url('home/murid_pkl') ?>">
+              <div class="icon icon-shape icon-sm border-radius-md text-center me-2 d-flex align-items-center justify-content-center">
+                <i class="ni ni-world-2 text-danger text-sm opacity-10"></i>
+              </div>
+              <span class="nav-link-text ms-1">Daftar Murid PKL</span>
+            </a>
+          </li>
+        <?php endif; ?>
+
         <?php if (has_permission('setting')): ?>
           <li class="nav-item">
             <a class="nav-link " href="<?= base_url('home/setting') ?>">
