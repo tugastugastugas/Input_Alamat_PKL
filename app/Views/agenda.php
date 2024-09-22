@@ -196,33 +196,7 @@
                                 <textarea type="text" class="form-control" id="masalah" nama="masalah" readonly><?= $agenda->masalah ?></textarea>
                             </div>
                         </div>
-                        <div class="form-group mb-3">
-                            <label>Penilaian:</label><br>
 
-                            <label for="exampleInputUsername1">Keramahan</label>
-                            <div class="col-sm-5">
-                                <p><?= $agenda->keramahan ?></p>
-                            </div>
-                            <label for="exampleInputUsername1">Penampilan</label>
-                            <div class="col-sm-5">
-                                <p><?= $agenda->penampilan ?></p>
-                            </div>
-
-                            <label for="exampleInputUsername1">Senyum</label>
-                            <div class="col-sm-5">
-                                <p><?= $agenda->senyum ?></p>
-                            </div>
-
-                            <label for="exampleInputUsername1">Komunikasi</label>
-                            <div class="col-sm-5">
-                                <p><?= $agenda->komunikasi ?></p>
-                            </div>
-
-                            <label for="exampleInputUsername1">Realisasi Kerja</label>
-                            <div class="col-sm-5">
-                                <p><?= $agenda->realisasi_kerja ?></p>
-                            </div>
-                        </div>
                         <div class="form-group row">
                             <label for="jamPulang" class="col-sm-2 col-form-label">Catatan Kerja :</label>
                             <div class="col-sm-5">
